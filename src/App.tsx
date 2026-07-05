@@ -72,13 +72,19 @@ export default function App() {
       if (CONFIG.CLOUDFLARE.USE_CLOUDFLARE_BACKEND) {
         try {
           const response = await fetch(`${CONFIG.CLOUDFLARE.API_BASE_URL}/upload`);
-          if (response.ok) {
+          const contentType = response.headers.get('content-type');
+          if (response.ok && contentType && contentType.includes('application/json')) {
             const data = await response.json();
             if (Array.isArray(data)) {
               setVideos(data);
               localStorage.setItem('cinemax_videos_v1', JSON.stringify(data));
               return;
             }
+          } else {
+            console.warn(
+              'Cloudflare API endpoint returned a non-JSON response (likely HTML fallback in local dev/preview environment). ' +
+              'This is expected if your Cloudflare Pages/Workers are not yet bound or fully configured locally. Falling back to local storage.'
+            );
           }
         } catch (err) {
           console.error('Failed to load catalog from Cloudflare, falling back to local:', err);

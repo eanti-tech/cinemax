@@ -225,6 +225,13 @@ export default function UploadModal({
             },
             body: videoFile
           });
+          const contentType = response.headers.get('content-type');
+          if (!contentType || !contentType.includes('application/json')) {
+            throw new Error(
+              'Cloudflare API returned a non-JSON response (local Vite dev server served HTML). ' +
+              'To upload locally, please set CONFIG.CLOUDFLARE.USE_CLOUDFLARE_BACKEND to false in src/config.ts.'
+            );
+          }
           if (!response.ok) {
             throw new Error(`Video upload to Cloudflare R2 failed: ${response.statusText}`);
           }
@@ -245,6 +252,13 @@ export default function UploadModal({
             },
             body: thumbnailFile
           });
+          const contentType = response.headers.get('content-type');
+          if (!contentType || !contentType.includes('application/json')) {
+            throw new Error(
+              'Cloudflare API returned a non-JSON response (local Vite dev server served HTML). ' +
+              'To upload locally, please set CONFIG.CLOUDFLARE.USE_CLOUDFLARE_BACKEND to false in src/config.ts.'
+            );
+          }
           if (!response.ok) {
             throw new Error(`Thumbnail upload to Cloudflare R2 failed: ${response.statusText}`);
           }
