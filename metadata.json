@@ -1,0 +1,6 @@
+{
+  "name": "CINEMAX",
+  "description": "A premium dark-themed video streaming platform where users can upload, browse, and download content while admins manage trending items and approve uploads.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

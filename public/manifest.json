@@ -1,0 +1,22 @@
+{
+  "short_name": "CINEMAX",
+  "name": "CINEMAX Stream",
+  "description": "On-Demand Adaptive HLS Video Streaming Sandbox & Offline Player",
+  "icons": [
+    {
+      "src": "/icon-512.jpg",
+      "type": "image/jpeg",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/icon-512.jpg",
+      "type": "image/jpeg",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "display": "standalone",
+  "orientation": "portrait"
+}
