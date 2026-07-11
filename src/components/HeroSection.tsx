@@ -5,7 +5,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Info, Plus, Check, Volume2, VolumeX, Flame, Award } from 'lucide-react';
-import { Video } from '../types';
+import { Video, UserProfile, Comment } from '../types';
+import UserStars from './UserStars';
 
 interface HeroSectionProps {
   featuredVideo: Video | null;
@@ -13,6 +14,9 @@ interface HeroSectionProps {
   onOpenInfo: (video: Video) => void;
   isInWatchlist: boolean;
   onToggleWatchlist: () => void;
+  profiles?: UserProfile[];
+  comments?: Comment[];
+  videos?: Video[];
 }
 
 export default function HeroSection({
@@ -21,6 +25,9 @@ export default function HeroSection({
   onOpenInfo,
   isInWatchlist,
   onToggleWatchlist,
+  profiles = [],
+  comments = [],
+  videos = [],
 }: HeroSectionProps) {
   const [isMuted, setIsMuted] = useState(true);
   const [isPlayingVideo, setIsPlayingVideo] = useState(false);
@@ -169,10 +176,13 @@ export default function HeroSection({
           </h1>
 
           {/* Metadata */}
-          <div className="flex items-center space-x-3 text-xs sm:text-sm text-zinc-300">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs sm:text-sm text-zinc-300">
             <span className="font-semibold text-green-500">{(featuredVideo.likes + 250).toLocaleString()} Views</span>
             <span>•</span>
-            <span className="text-zinc-400">By @{featuredVideo.uploadedBy}</span>
+            <span className="text-zinc-400 flex items-center gap-1.5">
+              <span>By @{featuredVideo.uploadedBy}</span>
+              <UserStars username={featuredVideo.uploadedBy} profiles={profiles} videos={videos} comments={comments} size="xs" />
+            </span>
             <span>•</span>
             <span className="flex items-center text-amber-500 font-medium">
               <Award className="h-3.5 w-3.5 mr-0.5" />

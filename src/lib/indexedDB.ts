@@ -99,6 +99,9 @@ export async function getFileUrl(key: string): Promise<string | null> {
 export const CACHE_NAME = 'cinemax-downloads-cache';
 
 export async function cacheAsset(url: string, data?: Blob): Promise<void> {
+  if (!url || url.startsWith('indexeddb://') || url.startsWith('blob:') || url.startsWith('data:')) {
+    return;
+  }
   try {
     const cache = await caches.open(CACHE_NAME);
     if (data) {
@@ -115,6 +118,9 @@ export async function cacheAsset(url: string, data?: Blob): Promise<void> {
 }
 
 export async function getCachedAssetUrl(url: string): Promise<string | null> {
+  if (!url || url.startsWith('indexeddb://') || url.startsWith('blob:') || url.startsWith('data:')) {
+    return null;
+  }
   try {
     const cache = await caches.open(CACHE_NAME);
     const response = await cache.match(url);
@@ -129,6 +135,9 @@ export async function getCachedAssetUrl(url: string): Promise<string | null> {
 }
 
 export async function removeCachedAsset(url: string): Promise<void> {
+  if (!url || url.startsWith('indexeddb://') || url.startsWith('blob:') || url.startsWith('data:')) {
+    return;
+  }
   try {
     const cache = await caches.open(CACHE_NAME);
     await cache.delete(url);

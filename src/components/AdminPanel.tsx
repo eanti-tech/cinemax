@@ -6,13 +6,14 @@
 import React, { useState } from 'react';
 import { 
   ShieldCheck, Check, Trash2, Edit3, Star, Flame, 
-  Tv, Monitor, Folder, Info, CheckCircle2, Play, Plus, Save, AlertCircle, RefreshCw, Megaphone
+  Tv, Monitor, Folder, Info, CheckCircle2, Play, Plus, Save, AlertCircle, RefreshCw, Megaphone, User
 } from 'lucide-react';
-import { Video, Category, CATEGORIES } from '../types';
+import { Video, Category, CATEGORIES, UserProfile, getStarDetails, getStarEmoji, StarType, Comment, getUserStarStatus } from '../types';
 import CineImage from './CineImage';
 
 interface AdminPanelProps {
   videos: Video[];
+  comments: Comment[];
   onApproveVideo: (videoId: string) => void;
   onRejectVideo: (videoId: string) => void;
   onUpdateVideo: (updatedVideo: Video) => void;
@@ -22,10 +23,15 @@ interface AdminPanelProps {
   announcement?: string;
   onSaveAnnouncement?: (announcement: string) => void;
   onExitAdmin?: () => void;
+  profiles?: UserProfile[];
+  onAwardStar?: (username: string, star: StarType) => void;
+  onToggleDiamondStar?: (username: string) => void;
+  onDeleteProfile?: (username: string) => void;
 }
 
 export default function AdminPanel({
   videos,
+  comments = [],
   onApproveVideo,
   onRejectVideo,
   onUpdateVideo,
@@ -35,8 +41,12 @@ export default function AdminPanel({
   announcement = '',
   onSaveAnnouncement,
   onExitAdmin,
+  profiles = [],
+  onAwardStar,
+  onToggleDiamondStar,
+  onDeleteProfile,
 }: AdminPanelProps) {
-  const [activeTab, setActiveTab] = useState<'pending' | 'library' | 'announcement'>('pending');
+  const [activeTab, setActiveTab] = useState<'pending' | 'library' | 'announcement' | 'profiles'>('pending');
   const [announcementInput, setAnnouncementInput] = useState(announcement || '');
 
   // Keep announcementInput in sync with active broadcast prop
@@ -134,21 +144,22 @@ export default function AdminPanel({
       </div>
 
       {/* Control Tabs */}
-      <div className="flex space-x-3 mb-6">
+      <div className="flex space-x-2 sm:space-x-3 mb-6">
         <button
           id="admin-tab-pending"
           onClick={() => {
             setActiveTab('pending');
             setEditingVideoId(null);
           }}
-          className={`px-4 py-2.5 rounded text-xs font-bold cursor-pointer transition-all flex items-center space-x-2 border ${
+          className={`px-2.5 sm:px-4 py-2.5 rounded text-xs font-bold cursor-pointer transition-all flex items-center gap-1.5 sm:gap-2 border ${
             activeTab === 'pending'
               ? 'bg-red-950/25 text-red-400 border-red-900/60 shadow'
               : 'bg-white/5 text-zinc-450 border-white/10 hover:text-white hover:bg-white/10'
           }`}
+          title="Pending Queue"
         >
           <Folder className="h-4 w-4" />
-          <span>Pending</span>
+          <span className="hidden sm:inline">Pending</span>
           {totalPending > 0 && (
             <span className="bg-[#E50914] h-2 w-2 rounded-full flex-shrink-0 animate-pulse" />
           )}
@@ -160,14 +171,15 @@ export default function AdminPanel({
             setActiveTab('library');
             setEditingVideoId(null);
           }}
-          className={`px-4 py-2.5 rounded text-xs font-bold cursor-pointer transition-all flex items-center space-x-2 border ${
+          className={`px-2.5 sm:px-4 py-2.5 rounded text-xs font-bold cursor-pointer transition-all flex items-center gap-1.5 sm:gap-2 border ${
             activeTab === 'library'
               ? 'bg-red-950/25 text-red-400 border-red-900/60 shadow'
               : 'bg-white/5 text-zinc-455 border-white/10 hover:text-white hover:bg-white/10'
           }`}
+          title="Library Catalog"
         >
           <Tv className="h-4 w-4" />
-          <span>Library</span>
+          <span className="hidden sm:inline">Library</span>
         </button>
 
         <button
@@ -176,14 +188,32 @@ export default function AdminPanel({
             setActiveTab('announcement');
             setEditingVideoId(null);
           }}
-          className={`px-4 py-2.5 rounded text-xs font-bold cursor-pointer transition-all flex items-center space-x-2 border ${
+          className={`px-2.5 sm:px-4 py-2.5 rounded text-xs font-bold cursor-pointer transition-all flex items-center gap-1.5 sm:gap-2 border ${
             activeTab === 'announcement'
               ? 'bg-red-950/25 text-red-400 border-red-900/60 shadow'
               : 'bg-white/5 text-zinc-455 border-white/10 hover:text-white hover:bg-white/10'
           }`}
+          title="Broadcast News"
         >
           <Megaphone className="h-4 w-4" />
-          <span>News</span>
+          <span className="hidden sm:inline">News</span>
+        </button>
+
+        <button
+          id="admin-tab-profiles"
+          onClick={() => {
+            setActiveTab('profiles');
+            setEditingVideoId(null);
+          }}
+          className={`px-2.5 sm:px-4 py-2.5 rounded text-xs font-bold cursor-pointer transition-all flex items-center gap-1.5 sm:gap-2 border ${
+            activeTab === 'profiles'
+              ? 'bg-red-950/25 text-red-400 border-red-900/60 shadow'
+              : 'bg-white/5 text-zinc-455 border-white/10 hover:text-white hover:bg-white/10'
+          }`}
+          title="Manage Profiles"
+        >
+          <User className="h-4 w-4" />
+          <span className="hidden sm:inline">Profiles</span>
         </button>
       </div>
 
@@ -700,6 +730,117 @@ export default function AdminPanel({
                 <p className="text-xs text-zinc-300 italic font-sans">"{announcement}"</p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* PROFILES MANAGEMENT TAB */}
+        {activeTab === 'profiles' && (
+          <div className="space-y-4 animate-in fade-in duration-250">
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <User className="h-5 w-5 text-[#E50914]" />
+                  <span>Manage User Profiles</span>
+                </h3>
+                <p className="text-xs text-zinc-400">
+                  Award custom honorary stars to recognize contributions, activity, and community engagement.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {profiles.map((prof) => {
+                const status = getUserStarStatus(prof.username, profiles, videos, comments);
+                return (
+                  <div 
+                    key={prof.username} 
+                    className="bg-white/5 border border-white/10 px-3.5 py-2.5 rounded-xl flex items-center justify-between gap-3 hover:border-white/20 transition-all"
+                  >
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-extrabold text-sm text-zinc-200 truncate" title={`@${prof.username}`}>
+                          @{prof.username}
+                        </span>
+                        {prof.role === 'admin' && (
+                          <span className="bg-red-950/40 text-red-400 border border-red-900/40 text-[9px] px-1.5 py-0.5 rounded font-mono font-bold uppercase flex-shrink-0">
+                            Admin
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-zinc-500">
+                        Joined: {new Date(prof.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+
+                    {/* Display Clickable 5-Star Status Grid */}
+                    <div className="flex items-center gap-2">
+                      <div 
+                        onClick={() => onToggleDiamondStar?.(prof.username)}
+                        className="flex items-center space-x-1 bg-black/35 hover:bg-zinc-900/60 border border-white/5 hover:border-cyan-500/20 px-2 py-1.5 rounded-lg flex-shrink-0 select-none cursor-pointer active:scale-95 transition-all"
+                        title="Click star grid to toggle Diamond Star 💎"
+                      >
+                        {/* Diamond Star */}
+                        <Star 
+                          className={`h-4 w-4 transition-all duration-300 ${
+                            status.isDiamond 
+                              ? 'text-cyan-400 fill-cyan-400 drop-shadow-[0_0_4px_rgba(34,211,238,0.6)]' 
+                              : 'text-zinc-800 hover:text-cyan-400/40'
+                          }`}
+                          title={status.isDiamond ? "Diamond Star Issued" : "Diamond Star Slot (Admin Click to Award)"}
+                        />
+                        {/* Gold Star */}
+                        <Star 
+                          className={`h-4 w-4 transition-all duration-300 ${
+                            status.isGold 
+                              ? 'text-amber-400 fill-amber-400 drop-shadow-[0_0_4px_rgba(251,191,36,0.6)]' 
+                              : 'text-zinc-800'
+                          }`}
+                          title={status.isGold ? "Gold Star Issued (Top 10 Uploaders)" : "Gold Star Slot"}
+                        />
+                        {/* Silver Star */}
+                        <Star 
+                          className={`h-4 w-4 transition-all duration-300 ${
+                            status.isSilver 
+                              ? 'text-zinc-300 fill-zinc-300 drop-shadow-[0_0_4px_rgba(228,228,231,0.6)]' 
+                              : 'text-zinc-800'
+                          }`}
+                          title={status.isSilver ? "Silver Star Issued (Top 50 Viewers)" : "Silver Star Slot"}
+                        />
+                        {/* Bronze Star */}
+                        <Star 
+                          className={`h-4 w-4 transition-all duration-300 ${
+                            status.isBronze 
+                              ? 'text-orange-500 fill-orange-500 drop-shadow-[0_0_4px_rgba(249,115,22,0.6)]' 
+                              : 'text-zinc-800'
+                          }`}
+                          title={status.isBronze ? "Bronze Star Issued (Top 20 Commenters)" : "Bronze Star Slot"}
+                        />
+                        {/* Wood Star */}
+                        <Star 
+                          className="h-4 w-4 text-[#854d0e] fill-[#854d0e] drop-shadow-[0_0_4px_rgba(133,77,14,0.4)]"
+                          title="Wood Star Active (Default New User)"
+                        />
+                      </div>
+
+                      {onDeleteProfile && (
+                        <button
+                          id={`delete-profile-btn-${prof.username}`}
+                          onClick={() => {
+                            if (window.confirm(`Are you sure you want to permanently delete profile @${prof.username}?`)) {
+                              onDeleteProfile(prof.username);
+                            }
+                          }}
+                          className="bg-red-950/20 hover:bg-red-900/40 border border-red-900/40 hover:border-red-500/50 p-2 rounded-lg text-red-400 transition-all cursor-pointer active:scale-95 flex-shrink-0"
+                          title={`Delete profile @${prof.username}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 

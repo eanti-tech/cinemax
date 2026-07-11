@@ -5,7 +5,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Play, Heart, Info, ArrowLeft, Filter, ArrowUpDown, Film, Tv, LayoutGrid, Calendar, Eye } from 'lucide-react';
-import { Video } from '../types';
+import { Video, UserProfile, Comment } from '../types';
 import CineImage from './CineImage';
 
 interface CategoryExploreProps {
@@ -16,6 +16,9 @@ interface CategoryExploreProps {
   onLikeVideo: (video: Video, e: React.MouseEvent) => void;
   userLikedVideos: string[];
   onBack: () => void;
+  profiles?: UserProfile[];
+  comments?: Comment[];
+  allVideos?: Video[];
 }
 
 type SortType = 'recent' | 'views' | 'likes' | 'title';
@@ -29,6 +32,9 @@ export default function CategoryExplore({
   onLikeVideo,
   userLikedVideos,
   onBack,
+  profiles = [],
+  comments = [],
+  allVideos = [],
 }: CategoryExploreProps): React.JSX.Element {
   const [sortBy, setSortBy] = useState<SortType>('recent');
   const [format, setFormat] = useState<FormatFilter>('all');
@@ -273,7 +279,7 @@ export default function CategoryExplore({
                   {/* Footer metadata block */}
                   <div className="pt-1.5 sm:pt-2.5 border-t border-white/5 flex items-center justify-between text-[8px] sm:text-[10px] text-zinc-400">
                     <span className="truncate max-w-[45px] sm:max-w-[120px]">By @{video.uploadedBy}</span>
-                    <span className="text-zinc-500 font-mono">
+                    <span className="text-zinc-500 font-mono flex-shrink-0">
                       {new Date(video.uploadedAt).toLocaleDateString(undefined, {
                         month: 'short',
                         year: 'numeric'

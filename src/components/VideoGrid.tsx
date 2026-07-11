@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { Play, Heart, Star, ChevronRight, Info, Award, Download, AlertCircle } from 'lucide-react';
-import { Video } from '../types';
+import { Video, UserProfile, Comment } from '../types';
 import CineImage from './CineImage';
 
 interface VideoGridProps {
@@ -19,6 +19,9 @@ interface VideoGridProps {
   emptyMessage?: string;
   category?: string;
   onExploreCategory?: (category: string) => void;
+  profiles?: UserProfile[];
+  comments?: Comment[];
+  allVideos?: Video[];
 }
 
 export default function VideoGrid({
@@ -31,6 +34,9 @@ export default function VideoGrid({
   emptyMessage = "No content available in this category yet.",
   category,
   onExploreCategory,
+  profiles = [],
+  comments = [],
+  allVideos = [],
 }: VideoGridProps): React.JSX.Element {
   
   if (videos.length === 0) {
@@ -152,7 +158,7 @@ export default function VideoGrid({
                   </div>
 
                   {/* Mini Tags */}
-                  <div className="flex items-center flex-wrap gap-1 text-[8px] sm:text-[10px] text-zinc-400">
+                  <div className="flex items-center flex-wrap gap-1 sm:gap-1.5 text-[8px] sm:text-[10px] text-zinc-400">
                     <span className="text-zinc-300 font-semibold truncate max-w-[35px] sm:max-w-none">{video.category}</span>
                     <span className="text-[7px] text-zinc-600 sm:text-zinc-400">•</span>
                     <span className="truncate max-w-[35px] sm:max-w-none">@{video.uploadedBy}</span>

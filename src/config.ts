@@ -16,7 +16,7 @@ export const CONFIG = {
   CLOUDFLARE: {
     // True if you want to route API calls to Cloudflare Workers / Pages Functions
     // If false, the app runs entirely in client-side IndexedDB sandbox mode
-    USE_CLOUDFLARE_BACKEND: true, 
+    USE_CLOUDFLARE_BACKEND: false, 
 
     // The base URL of your Cloudflare Pages Functions or Worker endpoint
     // e.g. 'https://api.cinemax.workers.dev' or '/api' (if using Pages Functions)

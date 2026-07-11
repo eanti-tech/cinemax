@@ -8,7 +8,7 @@ import {
   X, UploadCloud, Film, Image, Sparkles, Check, 
   Settings, Loader, AlertTriangle, Monitor, HelpCircle, RefreshCw
 } from 'lucide-react';
-import { Video, Category, CATEGORIES, UserProfile } from '../types';
+import { Video, Category, CATEGORIES, UserProfile, convertSrtToVtt } from '../types';
 import { CONFIG } from '../config';
 
 interface UploadModalProps {
@@ -95,6 +95,8 @@ export default function UploadModal({
   const [videoUrl, setVideoUrl] = useState('');
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [thumbnailUrl, setThumbnailUrl] = useState('');
+  const [subtitleFile, setSubtitleFile] = useState<File | null>(null);
+  const [subtitles, setSubtitles] = useState('');
 
   // Auto-determined specs
   const [autoQuality, setAutoQuality] = useState('Determining...');
@@ -105,6 +107,7 @@ export default function UploadModal({
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const thumbInputRef = useRef<HTMLInputElement | null>(null);
+  const subtitleInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleVideoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -178,6 +181,20 @@ export default function UploadModal({
     reader.readAsDataURL(file);
   };
 
+  const handleSubtitleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setSubtitleFile(file);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const vttText = convertSrtToVtt(text);
+      setSubtitles(vttText);
+    };
+    reader.readAsText(file);
+  };
+
   // Helper to load cinematic stock clip immediately for testing
   const handleLoadSample = () => {
     setIsAnalyzing(true);
@@ -195,7 +212,12 @@ export default function UploadModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !videoUrl || !thumbnailUrl || !user) return;
+    if (!user) return;
+
+    if (!title.trim() || !videoUrl || !thumbnailUrl) {
+      alert('Please provide a title, video file, and thumbnail poster.');
+      return;
+    }
 
     setIsSaving(true);
     setSavingProgress(5);
@@ -204,46 +226,17 @@ export default function UploadModal({
     const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
     try {
-      await delay(700);
-      setSavingProgress(25);
-      await delay(600);
+      await delay(500);
+      setSavingProgress(15);
+      await delay(400);
 
-      let finalVideoUrl = videoUrl;
       let finalThumbnailUrl = thumbnailUrl;
 
       const fileId = Math.random().toString(36).substring(2, 11);
 
-      if (CONFIG.CLOUDFLARE.USE_CLOUDFLARE_BACKEND) {
-        // --- 1. Cloudflare R2 Direct Stream Ingestion ---
-        if (videoFile) {
-          setSavingProgress(35);
-          const cleanFileName = `video_${fileId}_${videoFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-          const response = await fetch(`${CONFIG.CLOUDFLARE.API_BASE_URL}/upload?file=${encodeURIComponent(cleanFileName)}`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': videoFile.type || 'video/mp4'
-            },
-            body: videoFile
-          });
-          const contentType = response.headers.get('content-type');
-          if (!contentType || !contentType.includes('application/json')) {
-            throw new Error(
-              'Cloudflare API returned a non-JSON response (local Vite dev server served HTML). ' +
-              'To upload locally, please set CONFIG.CLOUDFLARE.USE_CLOUDFLARE_BACKEND to false in src/config.ts.'
-            );
-          }
-          if (!response.ok) {
-            throw new Error(`Video upload to Cloudflare R2 failed: ${response.statusText}`);
-          }
-          const resData = await response.json();
-          // The public URL is served from your public R2 subdomain
-          finalVideoUrl = `${CONFIG.CLOUDFLARE.R2_PUBLIC_URL}/${resData.mediaKey}`;
-          setSavingProgress(70);
-          await delay(400);
-        }
-
-        if (thumbnailFile) {
-          setSavingProgress(80);
+      // 1. Process thumbnail poster
+      if (thumbnailFile) {
+        if (CONFIG.CLOUDFLARE.USE_CLOUDFLARE_BACKEND) {
           const cleanThumbName = `thumb_${fileId}_${thumbnailFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
           const response = await fetch(`${CONFIG.CLOUDFLARE.API_BASE_URL}/upload?file=${encodeURIComponent(cleanThumbName)}`, {
             method: 'PUT',
@@ -254,55 +247,53 @@ export default function UploadModal({
           });
           const contentType = response.headers.get('content-type');
           if (!contentType || !contentType.includes('application/json')) {
-            throw new Error(
-              'Cloudflare API returned a non-JSON response (local Vite dev server served HTML). ' +
-              'To upload locally, please set CONFIG.CLOUDFLARE.USE_CLOUDFLARE_BACKEND to false in src/config.ts.'
-            );
+            throw new Error('Cloudflare API returned a non-JSON response.');
           }
           if (!response.ok) {
             throw new Error(`Thumbnail upload to Cloudflare R2 failed: ${response.statusText}`);
           }
           const resData = await response.json();
           finalThumbnailUrl = `${CONFIG.CLOUDFLARE.R2_PUBLIC_URL}/${resData.mediaKey}`;
-          setSavingProgress(95);
-          await delay(400);
-        }
-      } else {
-        // --- 2. Offline Sandbox Local IndexedDB Storage ---
-        const { saveFile } = await import('../lib/indexedDB');
-
-        if (videoFile) {
-          setSavingProgress(45);
-          await delay(800);
-          const videoKey = `video_upload_${fileId}`;
-          await saveFile(videoKey, videoFile);
-          finalVideoUrl = `indexeddb://${videoKey}`;
-          setSavingProgress(65);
-          await delay(500);
         } else {
-          setSavingProgress(65);
-          await delay(700);
-        }
-
-        setSavingProgress(80);
-        await delay(600);
-
-        if (thumbnailFile) {
-          setSavingProgress(88);
-          await delay(500);
+          const { saveFile } = await import('../lib/indexedDB');
           const thumbKey = `thumb_upload_${fileId}`;
           await saveFile(thumbKey, thumbnailFile);
           finalThumbnailUrl = `indexeddb://${thumbKey}`;
-          setSavingProgress(95);
-          await delay(400);
+        }
+      }
+
+      // 2. Process video files
+      let finalVideoUrl = videoUrl;
+      if (videoFile) {
+        setSavingProgress(45);
+        if (CONFIG.CLOUDFLARE.USE_CLOUDFLARE_BACKEND) {
+          const cleanFileName = `video_${fileId}_${videoFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+          const response = await fetch(`${CONFIG.CLOUDFLARE.API_BASE_URL}/upload?file=${encodeURIComponent(cleanFileName)}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': videoFile.type || 'video/mp4'
+            },
+            body: videoFile
+          });
+          const contentType = response.headers.get('content-type');
+          if (!contentType || !contentType.includes('application/json')) {
+            throw new Error('Cloudflare API returned a non-JSON response.');
+          }
+          if (!response.ok) {
+            throw new Error(`Video upload to Cloudflare R2 failed: ${response.statusText}`);
+          }
+          const resData = await response.json();
+          finalVideoUrl = `${CONFIG.CLOUDFLARE.R2_PUBLIC_URL}/${resData.mediaKey}`;
         } else {
-          setSavingProgress(95);
-          await delay(500);
+          const { saveFile } = await import('../lib/indexedDB');
+          const videoKey = `video_upload_${fileId}`;
+          await saveFile(videoKey, videoFile);
+          finalVideoUrl = `indexeddb://${videoKey}`;
         }
       }
 
       setSavingProgress(100);
-      await delay(400);
+      await delay(300);
 
       const resolvedSeriesTitle = type === 'episode'
         ? (seriesSelectionMode === 'existing' ? seriesTitle : newSeriesTitle).trim() || 'Untitled Series'
@@ -324,12 +315,14 @@ export default function UploadModal({
         isPublic: false, // Uploads must go through verification by admin!
         isTrending: false,
         isFeatured: false,
+        subtitles: subtitles || undefined,
+        subtitleName: subtitleFile ? subtitleFile.name : undefined,
       });
 
       onClose();
     } catch (err) {
-      console.error('Error saving files to local IndexedDB storage:', err);
-      alert('Failed to save media files locally. Please check your storage size and try again.');
+      console.error('Error saving files to storage:', err);
+      alert('Failed to save media files. Please check your storage size and try again.');
     } finally {
       setIsSaving(false);
     }
@@ -337,7 +330,14 @@ export default function UploadModal({
 
   if (!user) {
     return (
-      <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 backdrop-blur-md">
+      <div 
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            onClose();
+          }
+        }}
+        className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 backdrop-blur-md"
+      >
         <div className="bg-[#0c0c0c] border border-white/10 rounded-xl max-w-md w-full p-6 text-center space-y-4">
           <AlertTriangle className="h-12 w-12 text-[#E50914] mx-auto animate-pulse" />
           <h2 className="text-xl font-bold text-white">Profile Required to Upload</h2>
@@ -371,6 +371,11 @@ export default function UploadModal({
   return (
     <div 
       id="upload-modal-overlay"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
       className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-3 sm:p-4 overflow-y-auto backdrop-blur-md"
     >
       <div
@@ -504,7 +509,56 @@ export default function UploadModal({
             </span>
           </div>
 
-          {/* Video file selection */}
+          {/* Release type & Genre selection */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white/5 border border-white/5 rounded-xl p-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Release Type</label>
+              <div className="flex space-x-3 pt-0.5">
+                <button
+                  id="type-movie-btn"
+                  type="button"
+                  onClick={() => setType('movie')}
+                  className={`flex-1 py-2 text-xs font-bold rounded border transition-all cursor-pointer ${
+                    type === 'movie'
+                      ? 'bg-red-950/25 text-[#E50914] border-red-900/40'
+                      : 'bg-[#050505] text-zinc-400 border-white/10 hover:text-white'
+                  }`}
+                >
+                  Single Movie
+                </button>
+                <button
+                  id="type-episode-btn"
+                  type="button"
+                  onClick={() => setType('episode')}
+                  className={`flex-1 py-2 text-xs font-bold rounded border transition-all cursor-pointer ${
+                    type === 'episode'
+                      ? 'bg-red-950/25 text-[#E50914] border-red-900/40'
+                      : 'bg-[#050505] text-zinc-400 border-white/10 hover:text-white'
+                  }`}
+                >
+                  Series Episode
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Genre Category</label>
+              <select
+                id="upload-category-select"
+                value={category}
+                onChange={(e) => setCategory(e.target.value as Category)}
+                className="w-full bg-[#050505] border border-white/10 text-white rounded px-3 py-2.5 text-xs focus:outline-none focus:border-[#E50914]"
+              >
+                {CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Media Files Input */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             
             {/* Video File Picker */}
@@ -603,6 +657,57 @@ export default function UploadModal({
                   </div>
                 )}
               </div>
+              <div className="flex justify-end pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setThumbnailUrl('https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=800&auto=format&fit=crop')}
+                  className="text-[10px] text-zinc-500 hover:text-zinc-300 underline cursor-pointer"
+                >
+                  Use Stock Poster
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Subtitle File Upload Section */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Subtitles File (Optional)</label>
+            <div 
+              id="subtitle-dropzone"
+              onClick={() => subtitleInputRef.current?.click()}
+              className={`border border-dashed rounded-lg p-3 text-center cursor-pointer transition-colors flex items-center justify-between bg-[#050505] ${
+                subtitleFile 
+                  ? 'border-green-850 bg-green-950/10' 
+                  : 'border-white/10 hover:border-white/20'
+              }`}
+            >
+              <input
+                id="subtitle-file-input"
+                ref={subtitleInputRef}
+                type="file"
+                accept=".srt,.vtt,text/vtt"
+                onChange={handleSubtitleFileChange}
+                className="hidden"
+              />
+              <div className="flex items-center space-x-2.5">
+                <span className="p-1.5 rounded bg-white/5 text-zinc-400">
+                  <Monitor className="h-4 w-4 text-zinc-400" />
+                </span>
+                <div className="text-left">
+                  <p className="text-xs font-semibold text-zinc-300">
+                    {subtitleFile ? subtitleFile.name : 'Load Subtitles (.srt, .vtt)'}
+                  </p>
+                  <p className="text-[10px] text-zinc-500">
+                    {subtitleFile ? 'File attached successfully' : 'Supports automatic SRT to WebVTT parsing'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="text-xs font-bold text-[#E50914] hover:text-red-400 underline cursor-pointer"
+              >
+                {subtitleFile ? 'Change' : 'Browse'}
+              </button>
             </div>
           </div>
 
@@ -650,7 +755,7 @@ export default function UploadModal({
             />
           </div>
 
-          {/* Description input */}
+          {/* Synopsis / Description input */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Synopsis / Description</label>
             <textarea
@@ -661,55 +766,6 @@ export default function UploadModal({
               placeholder="Provide a compelling overview of your movie story or series episode..."
               className="w-full bg-[#050505] border border-white/10 text-white rounded px-3 py-2.5 text-xs focus:outline-none focus:border-[#E50914] focus:ring-1 focus:ring-[#E50914]"
             />
-          </div>
-
-          {/* Category Selector */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Genre Category</label>
-              <select
-                id="upload-category-select"
-                value={category}
-                onChange={(e) => setCategory(e.target.value as Category)}
-                className="w-full bg-[#050505] border border-white/10 text-white rounded px-3 py-2.5 text-xs focus:outline-none focus:border-[#E50914]"
-              >
-                {CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Release Type</label>
-              <div className="flex space-x-3 pt-0.5">
-                <button
-                  id="type-movie-btn"
-                  type="button"
-                  onClick={() => setType('movie')}
-                  className={`flex-1 py-2 text-xs font-bold rounded border transition-all cursor-pointer ${
-                    type === 'movie'
-                      ? 'bg-red-950/25 text-[#E50914] border-red-900/40'
-                      : 'bg-[#050505] text-zinc-450 border-white/10 hover:text-white'
-                  }`}
-                >
-                  Single Movie
-                </button>
-                <button
-                  id="type-episode-btn"
-                  type="button"
-                  onClick={() => setType('episode')}
-                  className={`flex-1 py-2 text-xs font-bold rounded border transition-all cursor-pointer ${
-                    type === 'episode'
-                      ? 'bg-red-950/25 text-[#E50914] border-red-900/40'
-                      : 'bg-[#050505] text-zinc-455 border-white/10 hover:text-white'
-                  }`}
-                >
-                  Series Episode
-                </button>
-              </div>
-            </div>
           </div>
 
           {/* Series Episode Fields */}

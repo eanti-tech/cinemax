@@ -7,10 +7,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Play, Pause, Heart, Download, MessageSquare, 
   Send, User, Calendar, Flame, AlertCircle, RefreshCw, CheckCircle, Monitor,
-  Bookmark, Check
+  Bookmark, Check, Star, Trash2
 } from 'lucide-react';
-import { Video, Comment, UserProfile, DownloadItem } from '../types';
+import { Video, Comment, UserProfile, DownloadItem, getStarEmoji, getUserStarStatus } from '../types';
 import CineImage from './CineImage';
+import UserStars from './UserStars';
 
 interface VideoDetailModalProps {
   video: Video | null;
@@ -31,6 +32,9 @@ interface VideoDetailModalProps {
   onQueueMultipleEpisodes?: (episodes: Video[]) => void;
   onPauseDownload?: (id: string, e?: React.MouseEvent) => void;
   onResumeDownload?: (id: string, e?: React.MouseEvent) => void;
+  profiles?: UserProfile[];
+  isAdmin?: boolean;
+  onDeleteComment?: (commentId: string) => void;
 }
 
 export default function VideoDetailModal({
@@ -52,6 +56,9 @@ export default function VideoDetailModal({
   onQueueMultipleEpisodes,
   onPauseDownload,
   onResumeDownload,
+  profiles = [],
+  isAdmin = false,
+  onDeleteComment,
 }: VideoDetailModalProps) {
   const [commentText, setCommentText] = useState('');
   const [showBatchDownloader, setShowBatchDownloader] = useState(false);
@@ -134,6 +141,11 @@ export default function VideoDetailModal({
   return (
     <div 
       id="video-detail-overlay"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
       className="fixed inset-0 z-50 bg-black/85 flex justify-center items-start p-3 sm:p-4 overflow-y-auto backdrop-blur-md"
     >
       <div
@@ -200,7 +212,10 @@ export default function VideoDetailModal({
                 </p>
               )}
               <div className="flex flex-wrap items-center gap-4 text-xs text-zinc-400">
-                <span className="font-semibold text-zinc-300">By @{video.uploadedBy}</span>
+                <span className="font-semibold text-zinc-300 flex items-center gap-1.5">
+                  <span>By @{video.uploadedBy}</span>
+                  <UserStars username={video.uploadedBy} profiles={profiles} videos={allVideos} comments={comments} size="xs" />
+                </span>
                 <span>•</span>
                 <span className="flex items-center space-x-1 font-mono">
                   <Calendar className="h-3.5 w-3.5 text-zinc-500" />
@@ -487,17 +502,41 @@ export default function VideoDetailModal({
                   <p className="text-xs text-zinc-500">No discussions yet. Be the first to express your thoughts!</p>
                 </div>
               ) : (
-                videoComments.map((comment) => (
-                  <div id={`comment-${comment.id}`} key={comment.id} className="text-xs space-y-1 bg-white/5 p-2.5 rounded-lg border border-white/5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-zinc-300">@{comment.username}</span>
-                      <span className="text-[10px] text-zinc-500 font-mono">
-                        {new Date(comment.createdAt).toLocaleDateString()}
-                      </span>
+                videoComments.map((comment) => {
+                  const isUserAdmin = isAdmin || (user && user.role === 'admin') || (user && user.username.trim().toLowerCase() === 'oanti');
+                  const isCommentOwner = user && comment.username.trim().toLowerCase() === user.username.trim().toLowerCase();
+                  const canDelete = isUserAdmin || isCommentOwner;
+
+                  return (
+                    <div id={`comment-${comment.id}`} key={comment.id} className="text-xs space-y-1 bg-white/5 p-2.5 rounded-lg border border-white/5 animate-in fade-in duration-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-1.5 min-w-0">
+                          <span className="font-bold text-zinc-300 truncate" title={`@${comment.username}`}>
+                            @{comment.username}
+                          </span>
+                          
+                          <UserStars username={comment.username} profiles={profiles} videos={allVideos} comments={comments} size="xs" />
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-[10px] text-zinc-500 font-mono flex-shrink-0">
+                            {new Date(comment.createdAt).toLocaleDateString()}
+                          </span>
+                          {canDelete && onDeleteComment && (
+                            <button
+                              id={`delete-comment-btn-${comment.id}`}
+                              onClick={() => onDeleteComment(comment.id)}
+                              className="text-zinc-500 hover:text-red-500 p-0.5 rounded transition-colors cursor-pointer"
+                              title="Delete Comment"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-zinc-400 leading-relaxed break-words">{comment.text}</p>
                     </div>
-                    <p className="text-zinc-400 leading-relaxed">{comment.text}</p>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 

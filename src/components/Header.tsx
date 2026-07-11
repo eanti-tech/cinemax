@@ -4,8 +4,8 @@
  */
 
 import React, { useState } from 'react';
-import { Film, Search, Download, ShieldAlert, LogOut, Heart, Tv, UserPlus, User, Lock, KeyRound, ShieldCheck, X, Megaphone, Smartphone } from 'lucide-react';
-import { UserProfile } from '../types';
+import { Film, Search, Download, ShieldAlert, LogOut, Heart, Tv, UserPlus, User, Lock, KeyRound, ShieldCheck, X, Megaphone, Smartphone, Star } from 'lucide-react';
+import { UserProfile, getStarDetails, getStarEmoji, getUserStarStatus, Video, Comment } from '../types';
 import { CONFIG } from '../config';
 
 interface HeaderProps {
@@ -23,6 +23,9 @@ interface HeaderProps {
   hasNewWatchlist?: boolean;
   hasNewDownloads?: boolean;
   announcement?: string;
+  profiles: UserProfile[];
+  videos: Video[];
+  comments: Comment[];
 }
 
 export default function Header({
@@ -40,6 +43,9 @@ export default function Header({
   hasNewWatchlist = false,
   hasNewDownloads = false,
   announcement = '',
+  profiles = [],
+  videos = [],
+  comments = [],
 }: HeaderProps) {
   const [showSearch, setShowSearch] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
@@ -102,6 +108,40 @@ export default function Header({
     }
   };
 
+  // Keyboard PIN verification for external keyboards
+  React.useEffect(() => {
+    if (!showPasscodeModal) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (/^\d$/.test(e.key)) {
+        e.preventDefault();
+        if (passcode.length < 4 && !isVerifying) {
+          setPasscodeError(false);
+          const newPass = passcode + e.key;
+          setPasscode(newPass);
+          
+          if (newPass.length === 4) {
+            handleVerifyCode(newPass);
+          }
+        }
+      } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        if (!isVerifying) {
+          setPasscode(prev => prev.slice(0, -1));
+          setPasscodeError(false);
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowPasscodeModal(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showPasscodeModal, passcode, isVerifying]);
+
   // Home tab is removed from list, clicking on CINE logo navigates home.
   const tabs = [
     { id: 'series', label: 'Series', Icon: Tv },
@@ -113,7 +153,7 @@ export default function Header({
   return (
     <>
       <header className="fixed top-0 left-0 right-0 z-50 bg-[#050505]/95 backdrop-blur-md border-b border-white/10 transition-all duration-300">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 h-10 sm:h-12 lg:h-20 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 h-10 sm:h-12 lg:h-12 flex items-center justify-between">
           
           {/* Left Section: Logo & Tabs */}
           <div className="flex items-center space-x-6 lg:space-x-12">
@@ -124,7 +164,7 @@ export default function Header({
               className="flex items-center cursor-pointer select-none group"
               title="Go to Home"
             >
-              <span className="text-xl sm:text-2xl lg:text-4xl font-black tracking-tighter font-display transition-transform duration-200 group-hover:scale-105 select-none">
+              <span className="text-xl sm:text-2xl lg:text-2xl font-black tracking-tighter font-display transition-transform duration-200 group-hover:scale-105 select-none">
                 <span className="text-[#E50914]">CINE</span>
                 <span className="text-white">MAX</span>
               </span>
@@ -322,6 +362,58 @@ export default function Header({
                     </button>
                   )}
 
+                  {(() => {
+                    const status = getUserStarStatus(user.username, profiles, videos, comments);
+                    return (
+                      <div className="mx-4 my-2 p-3 bg-white/5 border border-white/10 rounded-lg flex flex-col items-center justify-center space-y-2 select-none animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-center space-x-1.5">
+                          {/* Diamond Star */}
+                          <Star 
+                            className={`h-5 w-5 transition-all duration-300 ${
+                              status.isDiamond 
+                                ? 'text-cyan-400 fill-cyan-400 drop-shadow-[0_0_6px_rgba(34,211,238,0.6)] animate-pulse' 
+                                : 'text-zinc-700 hover:text-cyan-400/40'
+                            }`}
+                            title={status.isDiamond ? "Diamond Star Issued" : "Diamond Star Slot (Admin Issued Only)"}
+                          />
+                          {/* Gold Star */}
+                          <Star 
+                            className={`h-5 w-5 transition-all duration-300 ${
+                              status.isGold 
+                                ? 'text-amber-400 fill-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.6)]' 
+                                : 'text-zinc-700 hover:text-amber-400/40'
+                            }`}
+                            title={status.isGold ? "Gold Star Issued (Top 10 Approved Uploaders)" : "Gold Star Slot"}
+                          />
+                          {/* Silver Star */}
+                          <Star 
+                            className={`h-5 w-5 transition-all duration-300 ${
+                              status.isSilver 
+                                ? 'text-zinc-300 fill-zinc-300 drop-shadow-[0_0_6px_rgba(228,228,231,0.6)]' 
+                                : 'text-zinc-700 hover:text-zinc-300/40'
+                            }`}
+                            title={status.isSilver ? "Silver Star Issued (Top 50 Viewers)" : "Silver Star Slot"}
+                          />
+                          {/* Bronze Star */}
+                          <Star 
+                            className={`h-5 w-5 transition-all duration-300 ${
+                              status.isBronze 
+                                ? 'text-orange-500 fill-orange-500 drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]' 
+                                : 'text-zinc-700 hover:text-orange-500/40'
+                            }`}
+                            title={status.isBronze ? "Bronze Star Issued (Top 20 Commenters)" : "Bronze Star Slot"}
+                          />
+                          {/* Wood Star */}
+                          <Star 
+                            className="h-5 w-5 text-[#854d0e] fill-[#854d0e] drop-shadow-[0_0_4px_rgba(133,77,14,0.4)] transition-all duration-300"
+                            title="Wood Star Active (Default New User)"
+                          />
+                        </div>
+                        <p className="text-[8px] text-zinc-500 font-bold tracking-wider leading-none uppercase">Profile Honor Award</p>
+                      </div>
+                    );
+                  })()}
+
                   <button
                     id="dropdown-watchlist"
                     onClick={() => {
@@ -450,126 +542,140 @@ export default function Header({
     {showPasscodeModal && (
       <div 
         id="passcode-verification-modal"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setShowPasscodeModal(false);
+          }
+        }}
         className="fixed inset-0 bg-[#020202]/95 backdrop-blur-md z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200"
       >
-        <div className="bg-[#0b0b0b] border border-white/10 rounded-2xl w-full max-w-[340px] sm:max-w-sm max-h-[95vh] overflow-y-auto scrollbar-thin scrollbar-track-zinc-950 scrollbar-thumb-zinc-800 shadow-[0_0_50px_rgba(229,9,20,0.15)] p-5 sm:p-6 text-center relative animate-in zoom-in-95 duration-200">
+        <div className="passcode-modal-container bg-[#0b0b0b] border border-white/10 rounded-2xl w-full max-w-[340px] sm:max-w-sm max-h-[95vh] overflow-y-auto scrollbar-thin scrollbar-track-zinc-950 scrollbar-thumb-zinc-800 shadow-[0_0_50px_rgba(229,9,20,0.15)] p-5 sm:p-6 text-center relative animate-in zoom-in-95 duration-200">
           
           {/* Close button */}
           <button 
             onClick={() => setShowPasscodeModal(false)}
-            className="absolute top-4 right-4 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+            className="absolute top-3 right-3 sm:top-4 sm:right-4 text-zinc-400 hover:text-white transition-colors cursor-pointer z-10"
           >
             <X className="h-5 w-5" />
           </button>
- 
-          {/* Secure lock icon header */}
-          <div className="mx-auto h-10 w-10 sm:h-12 sm:w-12 bg-red-950/40 border border-[#E50914]/30 rounded-full flex items-center justify-center text-[#E50914] mb-3 sm:mb-4">
-            <Lock className="h-4.5 w-4.5 sm:h-5 sm:w-5 animate-pulse" />
-          </div>
- 
-          <h3 className="text-sm sm:text-base font-extrabold uppercase tracking-wider text-white">
-            ADMIN ACCESS RESTRICTED
-          </h3>
-          <p className="text-[10px] sm:text-[11px] text-zinc-400 mt-1 max-w-xs mx-auto leading-relaxed">
-            Enter the master security PIN to authorize developer controls & moderation features.
-          </p>
- 
-          {/* Passcode indicators display */}
-          <div className="flex justify-center space-x-2.5 sm:space-x-3.5 my-4 sm:my-6">
-            {[0, 1, 2, 3].map((idx) => {
-              const hasDigit = passcode.length > idx;
-              return (
-                <div 
-                  key={idx}
-                  className={`h-3 w-3 sm:h-4 sm:w-4 rounded-full border-2 transition-all duration-150 ${
-                    passcodeError 
-                      ? 'border-red-500 bg-red-500/20 animate-bounce' 
-                      : hasDigit 
-                        ? 'border-[#E50914] bg-[#E50914]' 
-                        : 'border-white/15 bg-transparent'
-                  }`}
-                />
-              );
-            })}
-          </div>
- 
-          {/* Error message */}
-          {passcodeError && (
-            <p className="text-[9px] sm:text-[10px] text-red-500 font-mono font-bold uppercase tracking-wider mb-3 sm:mb-4 animate-pulse">
-              ⚠️ Invalid Security Passcode
-            </p>
-          )}
- 
-          {/* Touch-friendly Keypad Grid */}
-          <div className="grid grid-cols-3 gap-2 sm:gap-3 max-w-[200px] sm:max-w-[240px] mx-auto mb-3 sm:mb-4 font-mono">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-              <button
-                key={num}
-                disabled={isVerifying}
-                onClick={() => {
-                  if (passcode.length < 4 && !isVerifying) {
-                    setPasscodeError(false);
-                    const newPass = passcode + num;
-                    setPasscode(newPass);
-                    
-                    // Auto-validate once 4 characters are reached
-                    if (newPass.length === 4) {
-                      handleVerifyCode(newPass);
-                    }
-                  }
-                }}
-                className="h-10 w-10 sm:h-12 sm:w-12 rounded-full border border-white/5 bg-white/5 text-white font-bold text-base sm:text-lg hover:bg-white/15 hover:border-white/10 active:scale-95 transition-all cursor-pointer flex items-center justify-center disabled:opacity-50"
-              >
-                {num}
-              </button>
-            ))}
+
+          <div className="passcode-modal-grid">
             
-            {/* Clear button */}
-            <button
-              disabled={isVerifying}
-              onClick={() => {
-                setPasscode('');
-                setPasscodeError(false);
-              }}
-              className="h-10 w-10 sm:h-12 sm:w-12 rounded-full text-zinc-500 hover:text-white text-[10px] sm:text-xs font-bold transition-colors cursor-pointer flex items-center justify-center uppercase disabled:opacity-50"
-            >
-              Clear
-            </button>
- 
-            {/* Zero button */}
-            <button
-              key="0"
-              disabled={isVerifying}
-              onClick={() => {
-                if (passcode.length < 4 && !isVerifying) {
-                  setPasscodeError(false);
-                  const newPass = passcode + '0';
-                  setPasscode(newPass);
-                  
-                  if (newPass.length === 4) {
-                    handleVerifyCode(newPass);
-                  }
-                }
-              }}
-              className="h-10 w-10 sm:h-12 sm:w-12 rounded-full border border-white/5 bg-white/5 text-white font-bold text-base sm:text-lg hover:bg-white/15 hover:border-white/10 active:scale-95 transition-all cursor-pointer flex items-center justify-center disabled:opacity-50"
-            >
-              0
-            </button>
- 
-            {/* Backspace button */}
-            <button
-              disabled={isVerifying}
-              onClick={() => {
-                setPasscode(passcode.slice(0, -1));
-                setPasscodeError(false);
-              }}
-              className="h-10 w-10 sm:h-12 sm:w-12 rounded-full text-zinc-400 hover:text-white text-[10px] sm:text-xs font-bold transition-colors cursor-pointer flex items-center justify-center uppercase"
-            >
-              Delete
-            </button>
+            {/* Left Column (Lock & Header Info) */}
+            <div className="passcode-left-side">
+              {/* Secure lock icon header */}
+              <div className="lock-icon mx-auto h-10 w-10 sm:h-12 sm:w-12 bg-red-950/40 border border-[#E50914]/30 rounded-full flex items-center justify-center text-[#E50914] mb-3 sm:mb-4">
+                <Lock className="h-4.5 w-4.5 sm:h-5 sm:w-5 animate-pulse" />
+              </div>
+     
+              <h3 className="text-sm sm:text-base font-extrabold uppercase tracking-wider text-white">
+                ADMIN ACCESS RESTRICTED
+              </h3>
+              <p className="text-[10px] sm:text-[11px] text-zinc-400 mt-1 max-w-xs mx-auto leading-relaxed">
+                Enter the master security PIN to authorize developer controls & moderation features.
+              </p>
+     
+              {/* Passcode indicators display */}
+              <div className="passcode-indicator-row flex justify-center space-x-2.5 sm:space-x-3.5 my-4 sm:my-6">
+                {[0, 1, 2, 3].map((idx) => {
+                  const hasDigit = passcode.length > idx;
+                  return (
+                    <div 
+                      key={idx}
+                      className={`h-3 w-3 sm:h-4 sm:w-4 rounded-full border-2 transition-all duration-150 ${
+                        passcodeError 
+                          ? 'border-red-500 bg-red-500/20 animate-bounce' 
+                          : hasDigit 
+                            ? 'border-[#E50914] bg-[#E50914]' 
+                            : 'border-white/15 bg-transparent'
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+     
+              {/* Error message */}
+              {passcodeError && (
+                <p className="text-[9px] sm:text-[10px] text-red-500 font-mono font-bold uppercase tracking-wider mb-3 sm:mb-4 animate-pulse">
+                  ⚠️ Invalid Security Passcode
+                </p>
+              )}
+            </div>
+
+            {/* Right Column (Touch-friendly Keypad Grid) */}
+            <div>
+              <div className="passcode-keypad-grid grid grid-cols-3 gap-2 sm:gap-3 max-w-[200px] sm:max-w-[240px] mx-auto mb-3 sm:mb-4 font-mono">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+                  <button
+                    key={num}
+                    disabled={isVerifying}
+                    onClick={() => {
+                      if (passcode.length < 4 && !isVerifying) {
+                        setPasscodeError(false);
+                        const newPass = passcode + num;
+                        setPasscode(newPass);
+                        
+                        // Auto-validate once 4 characters are reached
+                        if (newPass.length === 4) {
+                          handleVerifyCode(newPass);
+                        }
+                      }
+                    }}
+                    className="h-10 w-10 sm:h-12 sm:w-12 rounded-full border border-white/5 bg-white/5 text-white font-bold text-base sm:text-lg hover:bg-white/15 hover:border-white/10 active:scale-95 transition-all cursor-pointer flex items-center justify-center disabled:opacity-50"
+                  >
+                    {num}
+                  </button>
+                ))}
+                
+                {/* Clear button */}
+                <button
+                  disabled={isVerifying}
+                  onClick={() => {
+                    setPasscode('');
+                    setPasscodeError(false);
+                  }}
+                  className="h-10 w-10 sm:h-12 sm:w-12 rounded-full text-zinc-500 hover:text-white text-[10px] sm:text-xs font-bold transition-colors cursor-pointer flex items-center justify-center uppercase disabled:opacity-50"
+                >
+                  Clear
+                </button>
+     
+                {/* Zero button */}
+                <button
+                  key="0"
+                  disabled={isVerifying}
+                  onClick={() => {
+                    if (passcode.length < 4 && !isVerifying) {
+                      setPasscodeError(false);
+                      const newPass = passcode + '0';
+                      setPasscode(newPass);
+                      
+                      if (newPass.length === 4) {
+                        handleVerifyCode(newPass);
+                      }
+                    }
+                  }}
+                  className="h-10 w-10 sm:h-12 sm:w-12 rounded-full border border-white/5 bg-white/5 text-white font-bold text-base sm:text-lg hover:bg-white/15 hover:border-white/10 active:scale-95 transition-all cursor-pointer flex items-center justify-center disabled:opacity-50"
+                >
+                  0
+                </button>
+     
+                {/* Backspace button */}
+                <button
+                  disabled={isVerifying}
+                  onClick={() => {
+                    setPasscode(passcode.slice(0, -1));
+                    setPasscodeError(false);
+                  }}
+                  className="h-10 w-10 sm:h-12 sm:w-12 rounded-full text-zinc-400 hover:text-white text-[10px] sm:text-xs font-bold transition-colors cursor-pointer flex items-center justify-center uppercase"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+
           </div>
  
-          <div className="text-[8px] sm:text-[9px] text-zinc-500 font-mono mt-2">
+          <div className="passcode-footer-text text-[8px] sm:text-[9px] text-zinc-500 font-mono mt-2">
             Protected by secure cryptographic passcode verification.
           </div>
  

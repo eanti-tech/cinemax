@@ -11,7 +11,7 @@ import {
   Pause, Clock, Trash2, RefreshCw
 } from 'lucide-react';
 
-import { Video, Comment, UserProfile, DownloadItem, CATEGORIES, Category } from './types';
+import { Video, Comment, UserProfile, DownloadItem, CATEGORIES, Category, StarType, getStarDetails } from './types';
 import { INITIAL_VIDEOS, INITIAL_COMMENTS } from './data';
 import { CONFIG } from './config';
 
@@ -25,6 +25,7 @@ import UploadModal from './components/UploadModal';
 import AdminPanel from './components/AdminPanel';
 import CineImage from './components/CineImage';
 import CategoryExplore from './components/CategoryExplore';
+import NotFoundView from './components/NotFoundView';
 
 export default function App() {
   const dragConstraintsRef = useRef<HTMLDivElement>(null);
@@ -36,6 +37,7 @@ export default function App() {
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
   const [watchlist, setWatchlist] = useState<string[]>([]);
   const [announcement, setAnnouncement] = useState<string>('');
+  const [profiles, setProfiles] = useState<UserProfile[]>([]);
 
   // Navigation and Interactive UI states
   const [currentTab, setCurrentTab] = useState<string>('home');
@@ -49,6 +51,7 @@ export default function App() {
   const [showProfileModal, setShowProfileModal] = useState<boolean>(false);
   const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
   const [isUploadHovered, setIsUploadHovered] = useState<boolean>(false);
+  const [isPlayerMinimized, setIsPlayerMinimized] = useState<boolean>(false);
 
   // Feedback Notifications
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -108,12 +111,38 @@ export default function App() {
       localStorage.setItem('cinemax_comments_v1', JSON.stringify(INITIAL_COMMENTS));
     }
 
+    const storedProfiles = localStorage.getItem('cinemax_profiles_v1');
+    let loadedProfiles: UserProfile[] = [];
+    if (storedProfiles) {
+      loadedProfiles = JSON.parse(storedProfiles);
+      setProfiles(loadedProfiles);
+    } else {
+      const seedProfiles: UserProfile[] = [
+        { username: 'oanti', createdAt: '2026-06-01T00:00:00Z', role: 'admin', star: 'gold' },
+        { username: 'cinemax_studio', createdAt: '2026-06-02T12:00:00Z', role: 'user', star: 'gold' },
+        { username: 'novela_lover', createdAt: '2026-06-03T09:00:00Z', role: 'user', star: 'purple' },
+        { username: 'dragon_rider', createdAt: '2026-06-05T14:00:00Z', role: 'user', star: 'blue' },
+        { username: 'cgi_enthusiast', createdAt: '2026-06-06T11:00:00Z', role: 'user', star: 'green' },
+        { username: 'sci_fi_geek', createdAt: '2026-06-07T16:00:00Z', role: 'user', star: 'orange' },
+        { username: 'novela_stan', createdAt: '2026-06-08T10:00:00Z', role: 'user', star: 'purple' }
+      ];
+      loadedProfiles = seedProfiles;
+      setProfiles(seedProfiles);
+      localStorage.setItem('cinemax_profiles_v1', JSON.stringify(seedProfiles));
+    }
+
     if (storedUser) {
       const parsedUser = JSON.parse(storedUser);
-      if (parsedUser.username === 'oanti') {
-        parsedUser.role = 'admin';
+      const matchedProfile = loadedProfiles.find(p => p.username.toLowerCase() === parsedUser.username.toLowerCase());
+      if (matchedProfile) {
+        setUser(matchedProfile);
+        localStorage.setItem('cinemax_user_v1', JSON.stringify(matchedProfile));
+      } else {
+        if (parsedUser.username === 'oanti') {
+          parsedUser.role = 'admin';
+        }
+        setUser(parsedUser);
       }
-      setUser(parsedUser);
     }
 
     // Load downloads from IndexedDB with localStorage fallback
@@ -165,6 +194,101 @@ export default function App() {
       localStorage.setItem('cinemax_has_new_downloads_v1', 'false');
     }
   }, [currentTab]);
+
+  // Synchronize app state to browser history for seamless mobile swipe-to-go-back support
+  useEffect(() => {
+    const currentState = window.history.state;
+    const isDifferent = 
+      !currentState ||
+      currentState.tab !== currentTab ||
+      currentState.selectedVideoId !== (selectedVideo?.id || null) ||
+      currentState.playingVideoId !== (playingVideo?.id || null) ||
+      currentState.exploreCategory !== selectedExploreCategory;
+
+    if (isDifferent) {
+      const newState = {
+        tab: currentTab,
+        selectedVideoId: selectedVideo?.id || null,
+        playingVideoId: playingVideo?.id || null,
+        exploreCategory: selectedExploreCategory,
+      };
+      
+      if (!currentState) {
+        window.history.replaceState(newState, '');
+      } else {
+        window.history.pushState(newState, '');
+      }
+    }
+  }, [currentTab, selectedVideo, playingVideo, selectedExploreCategory]);
+
+  // Handle popstate events when user swipes back on phone or clicks browser back button
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      const state = event.state;
+      if (state) {
+        if (state.tab !== undefined) {
+          setCurrentTab(state.tab);
+        }
+        if (state.selectedVideoId !== undefined) {
+          const found = videos.find(v => v.id === state.selectedVideoId) || null;
+          setSelectedVideo(found);
+        } else {
+          setSelectedVideo(null);
+        }
+        if (state.playingVideoId !== undefined) {
+          const found = videos.find(v => v.id === state.playingVideoId) || null;
+          setPlayingVideo(found);
+        } else {
+          setPlayingVideo(null);
+        }
+        if (state.exploreCategory !== undefined) {
+          setSelectedExploreCategory(state.exploreCategory);
+        } else {
+          setSelectedExploreCategory(null);
+        }
+      } else {
+        // Fallback to defaults
+        setCurrentTab('home');
+        setSelectedVideo(null);
+        setPlayingVideo(null);
+        setSelectedExploreCategory(null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [videos]);
+
+  // Swipe detection for native feeling swipe-to-dismiss and swipe-to-navigate
+  const touchStartX = useRef<number>(0);
+  const touchStartY = useRef<number>(0);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const diffX = e.changedTouches[0].clientX - touchStartX.current;
+    const diffY = e.changedTouches[0].clientY - touchStartY.current;
+
+    // We detect a reliable horizontal swipe (swipe length > 80px and vertical variation < 50px)
+    if (Math.abs(diffX) > 80 && Math.abs(diffY) < 50) {
+      if (diffX > 0) {
+        // SWIPE RIGHT (Left to Right) -> Go Back / Dismiss / Go to Home
+        if (playingVideo) {
+          setPlayingVideo(null);
+        } else if (selectedVideo) {
+          setSelectedVideo(null);
+        } else if (currentTab === 'explore-category' && selectedExploreCategory) {
+          setSelectedExploreCategory(null);
+          setCurrentTab('home');
+        } else if (currentTab !== 'home') {
+          setCurrentTab('home');
+        }
+      }
+    }
+  };
 
   // Background Download Simulation Queue Engine
   useEffect(() => {
@@ -248,7 +372,7 @@ export default function App() {
 
   // Lock background scrolling when fullscreen video player, more info modal, or upload/profile modal is open
   useEffect(() => {
-    if (playingVideo || selectedVideo || showProfileModal || showUploadModal) {
+    if ((playingVideo && !isPlayerMinimized) || selectedVideo || showProfileModal || showUploadModal) {
       document.body.classList.add('overflow-hidden');
     } else {
       document.body.classList.remove('overflow-hidden');
@@ -256,7 +380,7 @@ export default function App() {
     return () => {
       document.body.classList.remove('overflow-hidden');
     };
-  }, [playingVideo, selectedVideo, showProfileModal, showUploadModal]);
+  }, [playingVideo, isPlayerMinimized, selectedVideo, showProfileModal, showUploadModal]);
 
   // Scroll to top on tab changes to keep views independent
   useEffect(() => {
@@ -302,19 +426,54 @@ export default function App() {
   };
 
   // Profile Handlers
-  const handleCreateProfile = (username: string) => {
-    const isOanti = username.trim().toLowerCase() === 'oanti';
-    const newProfile: UserProfile = {
-      username,
-      createdAt: new Date().toISOString(),
-      role: isOanti ? 'admin' : 'user',
-    };
-    setUser(newProfile);
-    localStorage.setItem('cinemax_user_v1', JSON.stringify(newProfile));
-    if (isOanti) {
-      showToast(`Welcome Admin @${username}! Click your name in the profile menu to input your PIN.`);
+  const handleCreateProfile = (username: string, pinCode?: string) => {
+    const cleanUsername = username.trim();
+    const existing = profiles.find(p => p.username.toLowerCase() === cleanUsername.toLowerCase());
+    
+    if (existing) {
+      let updatedProfile = { ...existing };
+      
+      // If the legacy profile had no PIN, or is being upgraded to a secure hashed PIN, save it
+      if (pinCode && existing.pinCode !== pinCode) {
+        updatedProfile.pinCode = pinCode;
+        const updatedProfiles = profiles.map(p => p.username.toLowerCase() === cleanUsername.toLowerCase() ? updatedProfile : p);
+        setProfiles(updatedProfiles);
+        localStorage.setItem('cinemax_profiles_v1', JSON.stringify(updatedProfiles));
+        if (!existing.pinCode) {
+          showToast(`Profile @${existing.username} successfully secured with PIN!`);
+        } else {
+          showToast(`Profile @${existing.username} security upgraded successfully!`);
+        }
+      }
+
+      setUser(updatedProfile);
+      localStorage.setItem('cinemax_user_v1', JSON.stringify(updatedProfile));
+      if (existing.role === 'admin') {
+        showToast(`Welcome Admin @${existing.username}! Click your name in the profile menu to input your PIN.`);
+      } else {
+        showToast(`Welcome back, @${existing.username}!`);
+      }
     } else {
-      showToast(`Welcome to CINEMAX, @${username}! Offline downloads and uploads unlocked.`);
+      const isOanti = cleanUsername.toLowerCase() === 'oanti';
+      const newProfile: UserProfile = {
+        username: cleanUsername,
+        createdAt: new Date().toISOString(),
+        role: isOanti ? 'admin' : 'user',
+        star: 'none',
+        pinCode: pinCode || undefined
+      };
+      const updatedProfiles = [...profiles, newProfile];
+      setProfiles(updatedProfiles);
+      localStorage.setItem('cinemax_profiles_v1', JSON.stringify(updatedProfiles));
+      
+      setUser(newProfile);
+      localStorage.setItem('cinemax_user_v1', JSON.stringify(newProfile));
+      if (isOanti) {
+        showToast(`Welcome Admin @${cleanUsername}! Click your name in the profile menu to input your PIN.`);
+      } else {
+        const securedMsg = pinCode ? ' (secured with PIN)' : '';
+        showToast(`Welcome to CINEMAX, @${cleanUsername}! Offline downloads and uploads unlocked${securedMsg}.`);
+      }
     }
   };
 
@@ -329,6 +488,84 @@ export default function App() {
     setCurrentTab('home');
   };
 
+  const handleAwardStar = (username: string, star: StarType) => {
+    const updatedProfiles = profiles.map((p) => {
+      if (p.username === username) {
+        return { ...p, star };
+      }
+      return p;
+    });
+    setProfiles(updatedProfiles);
+    localStorage.setItem('cinemax_profiles_v1', JSON.stringify(updatedProfiles));
+
+    // If active user is the awarded profile, update user state
+    if (user && user.username === username) {
+      const updatedUser = { ...user, star };
+      setUser(updatedUser);
+      localStorage.setItem('cinemax_user_v1', JSON.stringify(updatedUser));
+    }
+
+    const starLabel = getStarDetails(star)?.label || 'None';
+    showToast(`Successfully awarded ${starLabel} star to @${username}!`);
+  };
+
+  const handleToggleDiamondStar = (username: string) => {
+    const updatedProfiles = profiles.map((p) => {
+      if (p.username === username) {
+        const isDiamond = !p.isDiamond;
+        return { ...p, isDiamond };
+      }
+      return p;
+    });
+    setProfiles(updatedProfiles);
+    localStorage.setItem('cinemax_profiles_v1', JSON.stringify(updatedProfiles));
+
+    // If active user is the toggled profile, update user state
+    if (user && user.username === username) {
+      const matched = updatedProfiles.find(p => p.username === username);
+      if (matched) {
+        setUser(matched);
+        localStorage.setItem('cinemax_user_v1', JSON.stringify(matched));
+      }
+    }
+
+    const targetProfile = updatedProfiles.find(p => p.username === username);
+    if (targetProfile?.isDiamond) {
+      showToast(`Successfully awarded Diamond star 💎 to @${username}!`);
+    } else {
+      showToast(`Successfully revoked Diamond star from @${username}.`);
+    }
+  };
+
+  const handleDeleteProfile = (username: string) => {
+    if (!isAdmin) {
+      showToast('Only administrators can delete profiles.');
+      return;
+    }
+
+    if (username.trim().toLowerCase() === 'oanti') {
+      showToast('The main administrator profile @oanti cannot be deleted.');
+      return;
+    }
+
+    const updatedProfiles = profiles.filter((p) => p.username.toLowerCase() !== username.toLowerCase());
+    setProfiles(updatedProfiles);
+    localStorage.setItem('cinemax_profiles_v1', JSON.stringify(updatedProfiles));
+
+    if (user && user.username.toLowerCase() === username.toLowerCase()) {
+      setUser(null);
+      setDownloads([]);
+      setWatchlist([]);
+      localStorage.removeItem('cinemax_user_v1');
+      localStorage.removeItem('cinemax_downloads_v1');
+      localStorage.removeItem('cinemax_watchlist_v1');
+      setCurrentTab('home');
+      showToast(`Your profile @${username} was deleted by admin.`);
+    } else {
+      showToast(`Profile @${username} was deleted successfully.`);
+    }
+  };
+
   const handleSaveAnnouncement = (text: string) => {
     setAnnouncement(text);
     if (text) {
@@ -341,18 +578,27 @@ export default function App() {
   };
 
   // Video Upload Handler
-  const handleUploadVideo = (newVideoData: Omit<Video, 'id' | 'likes' | 'likedBy' | 'views'>) => {
-    const newVideo: Video = {
-      ...newVideoData,
-      id: `uploaded-${Date.now()}`,
+  const handleUploadVideo = (
+    newVideoData: Omit<Video, 'id' | 'likes' | 'likedBy' | 'views'> | Omit<Video, 'id' | 'likes' | 'likedBy' | 'views'>[]
+  ) => {
+    const videoArray = Array.isArray(newVideoData) ? newVideoData : [newVideoData];
+    
+    const newVideos: Video[] = videoArray.map((videoData, idx) => ({
+      ...videoData,
+      id: `uploaded-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
       likes: 0,
       likedBy: [],
       views: 0,
-    };
+    }));
     
-    const updated = [newVideo, ...videos];
+    const updated = [...newVideos, ...videos];
     saveVideosState(updated);
-    showToast('Video submitted successfully! It is pending admin verification before going public.');
+    
+    if (newVideos.length > 1) {
+      showToast(`Successfully submitted ${newVideos.length} episodes for verification!`);
+    } else {
+      showToast('Video submitted successfully! It is pending admin verification before going public.');
+    }
   };
 
   // Admin Modifiers
@@ -496,6 +742,12 @@ export default function App() {
 
   // User interactions: Download Simulator with Advanced Sequence Queueing & Pause/Resume
   const handleDownloadVideos = (videosToQueue: Video[]) => {
+    if (!user) {
+      showToast('You must sign in or create a profile to download videos.');
+      setShowProfileModal(true);
+      return;
+    }
+
     let updatedDownloads = [...downloads];
     let addedCount = 0;
 
@@ -580,7 +832,12 @@ export default function App() {
 
   // User interactions: Comments
   const handleAddComment = (videoId: string, text: string) => {
-    const activeUser = user?.username || 'anonymous_guest';
+    if (!user) {
+      showToast('You must sign in or create a profile to write a comment.');
+      setShowProfileModal(true);
+      return;
+    }
+    const activeUser = user.username;
     const newComment: Comment = {
       id: `comment-${Date.now()}`,
       videoId,
@@ -592,6 +849,27 @@ export default function App() {
     const updated = [newComment, ...comments];
     saveCommentsState(updated);
     showToast('Comment posted successfully!');
+  };
+
+  const handleDeleteComment = (commentId: string) => {
+    const comment = comments.find((c) => c.id === commentId);
+    if (!comment) {
+      showToast('Comment not found.');
+      return;
+    }
+
+    const isUserAdmin = isAdmin || (user && user.role === 'admin') || (user && user.username.trim().toLowerCase() === 'oanti');
+    const isCommentOwner = user && comment.username.trim().toLowerCase() === user.username.trim().toLowerCase();
+    const canDelete = isUserAdmin || isCommentOwner;
+
+    if (!canDelete) {
+      showToast('You do not have permission to delete this comment.');
+      return;
+    }
+
+    const updated = comments.filter((c) => c.id !== commentId);
+    saveCommentsState(updated);
+    showToast('Comment deleted successfully.');
   };
 
   const handlePlayVideo = (video: Video) => {
@@ -691,7 +969,12 @@ export default function App() {
     : [];
 
   return (
-    <div id="cinemax-app-root" className="bg-zinc-950 text-white min-h-screen font-sans pb-24 relative overflow-x-hidden">
+    <div 
+      id="cinemax-app-root" 
+      className="bg-zinc-950 text-white min-h-screen font-sans pb-24 relative overflow-x-hidden"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       
       {/* Floating Header */}
       <Header
@@ -709,6 +992,9 @@ export default function App() {
         hasNewWatchlist={hasNewWatchlist}
         hasNewDownloads={hasNewDownloads}
         announcement={announcement}
+        profiles={profiles}
+        videos={videos}
+        comments={comments}
       />
 
       {/* TOAST SYSTEM */}
@@ -733,6 +1019,9 @@ export default function App() {
                 onOpenInfo={setSelectedVideo}
                 isInWatchlist={watchlist.includes(featuredVideo?.id || '')}
                 onToggleWatchlist={() => handleToggleWatchlist(featuredVideo?.id || '')}
+                profiles={profiles}
+                comments={comments}
+                videos={videos}
               />
             )}
 
@@ -755,6 +1044,9 @@ export default function App() {
                   onOpenInfo={(v) => { setSelectedVideo(v); }}
                   onLikeVideo={(v, e) => { handleLikeVideo(v, e); }}
                   userLikedVideos={userLikedVideoIds}
+                  profiles={profiles}
+                  comments={comments}
+                  allVideos={videos}
                 />
               )}
 
@@ -766,6 +1058,9 @@ export default function App() {
                 onOpenInfo={(v) => { setSelectedVideo(v); }}
                 onLikeVideo={(v, e) => { handleLikeVideo(v, e); }}
                 userLikedVideos={userLikedVideoIds}
+                profiles={profiles}
+                comments={comments}
+                allVideos={videos}
               />
 
               {/* Standard categories rows */}
@@ -783,6 +1078,9 @@ export default function App() {
                     setSelectedExploreCategory(cat as Category);
                     setCurrentTab('explore-category');
                   }}
+                  profiles={profiles}
+                  comments={comments}
+                  allVideos={videos}
                 />
               ))}
             </div>
@@ -805,6 +1103,9 @@ export default function App() {
               onLikeVideo={(v, e) => { handleLikeVideo(v, e); }}
               userLikedVideos={userLikedVideoIds}
               emptyMessage="No series or episodes are currently public."
+              profiles={profiles}
+              comments={comments}
+              allVideos={videos}
             />
           </div>
         )}
@@ -825,6 +1126,9 @@ export default function App() {
               onLikeVideo={(v, e) => { handleLikeVideo(v, e); }}
               userLikedVideos={userLikedVideoIds}
               emptyMessage="No movies are currently public on CINEMAX stream."
+              profiles={profiles}
+              comments={comments}
+              allVideos={videos}
             />
           </div>
         )}
@@ -858,6 +1162,9 @@ export default function App() {
                 onOpenInfo={(v) => { setSelectedVideo(v); }}
                 onLikeVideo={(v, e) => { handleLikeVideo(v, e); }}
                 userLikedVideos={userLikedVideoIds}
+                profiles={profiles}
+                comments={comments}
+                allVideos={videos}
               />
             )}
           </div>
@@ -1104,6 +1411,11 @@ export default function App() {
                 setIsAdmin(false);
                 setCurrentTab('home');
               }}
+              profiles={profiles}
+              comments={comments}
+              onAwardStar={handleAwardStar}
+              onToggleDiamondStar={handleToggleDiamondStar}
+              onDeleteProfile={handleDeleteProfile}
             />
           </div>
         )}
@@ -1122,6 +1434,18 @@ export default function App() {
                 setCurrentTab('home');
                 setSelectedExploreCategory(null);
               }}
+              profiles={profiles}
+              comments={comments}
+              allVideos={videos}
+            />
+          </div>
+        )}
+
+        {/* TAB 8: CUSTOM 404 PAGE */}
+        {currentTab === '404' && (
+          <div className="animate-in fade-in duration-300">
+            <NotFoundView
+              onGoHome={() => setCurrentTab('home')}
             />
           </div>
         )}
@@ -1143,7 +1467,14 @@ export default function App() {
       >
         <button
           id="global-upload-trigger-btn"
-          onClick={() => setShowUploadModal(true)}
+          onClick={() => {
+            if (!user) {
+              showToast('You must sign in or create a profile to submit a video.');
+              setShowProfileModal(true);
+            } else {
+              setShowUploadModal(true);
+            }
+          }}
           className="bg-red-600 hover:bg-red-700 text-white rounded-full h-10 w-10 flex items-center justify-center shadow-[0_0_20px_rgba(220,38,38,0.5)] transform active:scale-95 transition-all cursor-pointer group relative"
           title="Submit a Video Release"
         >
@@ -1185,17 +1516,28 @@ export default function App() {
           onPlayVideo={handlePlayVideo}
           watchlist={watchlist}
           onToggleWatchlist={handleToggleWatchlist}
+          profiles={profiles}
+          isAdmin={isAdmin}
+          onDeleteComment={handleDeleteComment}
         />
       )}
 
       {playingVideo && (
         <CustomVideoPlayer
           video={playingVideo}
-          onClose={() => setPlayingVideo(null)}
+          onClose={() => {
+            setPlayingVideo(null);
+            setIsPlayerMinimized(false);
+          }}
           user={user}
           onOpenProfileModal={() => setShowProfileModal(true)}
           downloads={downloads}
           onDownloadVideo={handleDownloadVideo}
+          allVideos={videos}
+          onPlayVideo={setPlayingVideo}
+          dragConstraintsRef={dragConstraintsRef}
+          isMinimized={isPlayerMinimized}
+          onMinimizeChange={setIsPlayerMinimized}
         />
       )}
 
@@ -1203,6 +1545,7 @@ export default function App() {
         <CreateProfileModal
           onClose={() => setShowProfileModal(false)}
           onSave={handleCreateProfile}
+          profiles={profiles}
         />
       )}
 
