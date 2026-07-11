@@ -57,6 +57,19 @@ export async function onRequest(context: { request: Request; env: Env }): Promis
     if (request.method === 'GET') {
       const filename = url.searchParams.get('file');
       if (!filename) {
+        const action = url.searchParams.get('action');
+        if (action === 'comments') {
+          const comments = await env.CINEMAX_METADATA_KV.get('video_comments_v1') || '[]';
+          return new Response(comments, {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        if (action === 'profiles') {
+          const profiles = await env.CINEMAX_METADATA_KV.get('video_profiles_v1') || '[]';
+          return new Response(profiles, {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
         // Return existing metadata index
         const catalog = await env.CINEMAX_METADATA_KV.get('video_catalog_v1') || '[]';
         return new Response(catalog, {
@@ -75,11 +88,14 @@ export async function onRequest(context: { request: Request; env: Env }): Promis
 
     // --- CASE 2: PUT/POST REQUEST (Update catalog in KV OR upload file directly to Cloudflare R2) ---
     if (request.method === 'PUT' || request.method === 'POST') {
-      const isCatalogUpdate = url.searchParams.get('action') === 'catalog' || url.searchParams.get('catalog') === 'true';
+      const action = url.searchParams.get('action');
+      const isCatalogUpdate = action === 'catalog' || url.searchParams.get('catalog') === 'true';
+      const isCommentsUpdate = action === 'comments';
+      const isProfilesUpdate = action === 'profiles';
 
-      if (isCatalogUpdate) {
+      if (isCatalogUpdate || isCommentsUpdate || isProfilesUpdate) {
         // Parse the body as JSON and write it directly to KV!
-        const catalogBody = await request.text();
+        const jsonBody = await request.text();
         if (!env.CINEMAX_METADATA_KV) {
           return new Response(JSON.stringify({ 
             error: 'Cloudflare KV Namespace binding "CINEMAX_METADATA_KV" not configured in your Cloudflare dashboard.' 
@@ -88,10 +104,17 @@ export async function onRequest(context: { request: Request; env: Env }): Promis
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
-        await env.CINEMAX_METADATA_KV.put('video_catalog_v1', catalogBody);
+
+        const kvKey = isCatalogUpdate 
+          ? 'video_catalog_v1' 
+          : isCommentsUpdate 
+            ? 'video_comments_v1' 
+            : 'video_profiles_v1';
+
+        await env.CINEMAX_METADATA_KV.put(kvKey, jsonBody);
         return new Response(JSON.stringify({
           success: true,
-          message: 'Successfully updated the video catalog in KV'
+          message: `Successfully updated the ${kvKey} in KV`
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });

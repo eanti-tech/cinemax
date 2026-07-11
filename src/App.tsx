@@ -64,6 +64,7 @@ export default function App() {
   useEffect(() => {
     const storedVideos = localStorage.getItem('cinemax_videos_v1');
     const storedComments = localStorage.getItem('cinemax_comments_v1');
+    const storedProfiles = localStorage.getItem('cinemax_profiles_v1');
     const storedUser = localStorage.getItem('cinemax_user_v1');
     const storedDownloads = localStorage.getItem('cinemax_downloads_v1');
     const storedWatchlist = localStorage.getItem('cinemax_watchlist_v1');
@@ -71,53 +72,10 @@ export default function App() {
     const storedHasNewDownloads = localStorage.getItem('cinemax_has_new_downloads_v1');
     const storedAnnouncement = localStorage.getItem('cinemax_announcement_v1');
 
-    const loadVideos = async () => {
-      if (CONFIG.CLOUDFLARE.USE_CLOUDFLARE_BACKEND) {
-        try {
-          const response = await fetch(`${CONFIG.CLOUDFLARE.API_BASE_URL}/upload`);
-          const contentType = response.headers.get('content-type');
-          if (response.ok && contentType && contentType.includes('application/json')) {
-            const data = await response.json();
-            if (Array.isArray(data)) {
-              setVideos(data);
-              localStorage.setItem('cinemax_videos_v1', JSON.stringify(data));
-              return;
-            }
-          } else {
-            console.warn(
-              'Cloudflare API endpoint returned a non-JSON response (likely HTML fallback in local dev/preview environment). ' +
-              'This is expected if your Cloudflare Pages/Workers are not yet bound or fully configured locally. Falling back to local storage.'
-            );
-          }
-        } catch (err) {
-          console.error('Failed to load catalog from Cloudflare, falling back to local:', err);
-        }
-      }
-
-      if (storedVideos) {
-        setVideos(JSON.parse(storedVideos));
-      } else {
-        setVideos(INITIAL_VIDEOS);
-        localStorage.setItem('cinemax_videos_v1', JSON.stringify(INITIAL_VIDEOS));
-      }
-    };
-
-    loadVideos();
-
-    if (storedComments) {
-      setComments(JSON.parse(storedComments));
-    } else {
-      setComments(INITIAL_COMMENTS);
-      localStorage.setItem('cinemax_comments_v1', JSON.stringify(INITIAL_COMMENTS));
-    }
-
-    const storedProfiles = localStorage.getItem('cinemax_profiles_v1');
-    let loadedProfiles: UserProfile[] = [];
-    if (storedProfiles) {
-      loadedProfiles = JSON.parse(storedProfiles);
-      setProfiles(loadedProfiles);
-    } else {
-      const seedProfiles: UserProfile[] = [
+    const loadAllData = async () => {
+      let finalVideos = INITIAL_VIDEOS;
+      let finalComments = INITIAL_COMMENTS;
+      let finalProfiles: UserProfile[] = [
         { username: 'oanti', createdAt: '2026-06-01T00:00:00Z', role: 'admin', star: 'gold' },
         { username: 'cinemax_studio', createdAt: '2026-06-02T12:00:00Z', role: 'user', star: 'gold' },
         { username: 'novela_lover', createdAt: '2026-06-03T09:00:00Z', role: 'user', star: 'purple' },
@@ -126,24 +84,82 @@ export default function App() {
         { username: 'sci_fi_geek', createdAt: '2026-06-07T16:00:00Z', role: 'user', star: 'orange' },
         { username: 'novela_stan', createdAt: '2026-06-08T10:00:00Z', role: 'user', star: 'purple' }
       ];
-      loadedProfiles = seedProfiles;
-      setProfiles(seedProfiles);
-      localStorage.setItem('cinemax_profiles_v1', JSON.stringify(seedProfiles));
-    }
 
-    if (storedUser) {
-      const parsedUser = JSON.parse(storedUser);
-      const matchedProfile = loadedProfiles.find(p => p.username.toLowerCase() === parsedUser.username.toLowerCase());
-      if (matchedProfile) {
-        setUser(matchedProfile);
-        localStorage.setItem('cinemax_user_v1', JSON.stringify(matchedProfile));
-      } else {
-        if (parsedUser.username === 'oanti') {
-          parsedUser.role = 'admin';
+      // Load local cache fallbacks first
+      if (storedVideos) finalVideos = JSON.parse(storedVideos);
+      if (storedComments) finalComments = JSON.parse(storedComments);
+      if (storedProfiles) finalProfiles = JSON.parse(storedProfiles);
+
+      if (CONFIG.CLOUDFLARE.USE_CLOUDFLARE_BACKEND) {
+        try {
+          // Fetch videos
+          const responseVideos = await fetch(`${CONFIG.CLOUDFLARE.API_BASE_URL}/upload`);
+          const ctVideos = responseVideos.headers.get('content-type');
+          if (responseVideos.ok && ctVideos && ctVideos.includes('application/json')) {
+            const data = await responseVideos.json();
+            if (Array.isArray(data) && data.length > 0) {
+              finalVideos = data;
+              localStorage.setItem('cinemax_videos_v1', JSON.stringify(data));
+            }
+          }
+
+          // Fetch comments
+          const responseComments = await fetch(`${CONFIG.CLOUDFLARE.API_BASE_URL}/upload?action=comments`);
+          const ctComments = responseComments.headers.get('content-type');
+          if (responseComments.ok && ctComments && ctComments.includes('application/json')) {
+            const data = await responseComments.json();
+            if (Array.isArray(data) && data.length > 0) {
+              finalComments = data;
+              localStorage.setItem('cinemax_comments_v1', JSON.stringify(data));
+            }
+          }
+
+          // Fetch profiles
+          const responseProfiles = await fetch(`${CONFIG.CLOUDFLARE.API_BASE_URL}/upload?action=profiles`);
+          const ctProfiles = responseProfiles.headers.get('content-type');
+          if (responseProfiles.ok && ctProfiles && ctProfiles.includes('application/json')) {
+            const data = await responseProfiles.json();
+            if (Array.isArray(data) && data.length > 0) {
+              finalProfiles = data;
+              localStorage.setItem('cinemax_profiles_v1', JSON.stringify(data));
+            }
+          }
+        } catch (err) {
+          console.error('Failed to load data from Cloudflare, using local cache:', err);
         }
-        setUser(parsedUser);
       }
-    }
+
+      setVideos(finalVideos);
+      setComments(finalComments);
+      setProfiles(finalProfiles);
+
+      if (!storedVideos && !CONFIG.CLOUDFLARE.USE_CLOUDFLARE_BACKEND) {
+        localStorage.setItem('cinemax_videos_v1', JSON.stringify(INITIAL_VIDEOS));
+      }
+      if (!storedComments && !CONFIG.CLOUDFLARE.USE_CLOUDFLARE_BACKEND) {
+        localStorage.setItem('cinemax_comments_v1', JSON.stringify(INITIAL_COMMENTS));
+      }
+      if (!storedProfiles && !CONFIG.CLOUDFLARE.USE_CLOUDFLARE_BACKEND) {
+        localStorage.setItem('cinemax_profiles_v1', JSON.stringify(finalProfiles));
+      }
+
+      // Restore active logged-in profile session
+      if (storedUser) {
+        const parsedUser = JSON.parse(storedUser);
+        const matchedProfile = finalProfiles.find(p => p.username.toLowerCase() === parsedUser.username.toLowerCase());
+        if (matchedProfile) {
+          setUser(matchedProfile);
+          localStorage.setItem('cinemax_user_v1', JSON.stringify(matchedProfile));
+        } else {
+          if (parsedUser.username === 'oanti') {
+            parsedUser.role = 'admin';
+          }
+          setUser(parsedUser);
+        }
+      }
+    };
+
+    loadAllData();
 
     // Load downloads from IndexedDB with localStorage fallback
     import('./lib/indexedDB').then(({ getDownloadsList }) => {
@@ -407,9 +423,42 @@ export default function App() {
     }
   };
 
-  const saveCommentsState = (updatedComments: Comment[]) => {
+  const saveCommentsState = async (updatedComments: Comment[]) => {
     setComments(updatedComments);
     localStorage.setItem('cinemax_comments_v1', JSON.stringify(updatedComments));
+
+    if (CONFIG.CLOUDFLARE.USE_CLOUDFLARE_BACKEND) {
+      try {
+        await fetch(`${CONFIG.CLOUDFLARE.API_BASE_URL}/upload?action=comments`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(updatedComments),
+        });
+      } catch (err) {
+        console.error('Failed to sync comments to Cloudflare:', err);
+      }
+    }
+  };
+
+  const saveProfilesState = async (updatedProfiles: UserProfile[]) => {
+    setProfiles(updatedProfiles);
+    localStorage.setItem('cinemax_profiles_v1', JSON.stringify(updatedProfiles));
+
+    if (CONFIG.CLOUDFLARE.USE_CLOUDFLARE_BACKEND) {
+      try {
+        await fetch(`${CONFIG.CLOUDFLARE.API_BASE_URL}/upload?action=profiles`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(updatedProfiles),
+        });
+      } catch (err) {
+        console.error('Failed to sync profiles to Cloudflare:', err);
+      }
+    }
   };
 
   const saveDownloadsState = (updatedDownloads: DownloadItem[]) => {
@@ -437,8 +486,7 @@ export default function App() {
       if (pinCode && existing.pinCode !== pinCode) {
         updatedProfile.pinCode = pinCode;
         const updatedProfiles = profiles.map(p => p.username.toLowerCase() === cleanUsername.toLowerCase() ? updatedProfile : p);
-        setProfiles(updatedProfiles);
-        localStorage.setItem('cinemax_profiles_v1', JSON.stringify(updatedProfiles));
+        saveProfilesState(updatedProfiles);
         if (!existing.pinCode) {
           showToast(`Profile @${existing.username} successfully secured with PIN!`);
         } else {
@@ -463,8 +511,7 @@ export default function App() {
         pinCode: pinCode || undefined
       };
       const updatedProfiles = [...profiles, newProfile];
-      setProfiles(updatedProfiles);
-      localStorage.setItem('cinemax_profiles_v1', JSON.stringify(updatedProfiles));
+      saveProfilesState(updatedProfiles);
       
       setUser(newProfile);
       localStorage.setItem('cinemax_user_v1', JSON.stringify(newProfile));
@@ -495,8 +542,7 @@ export default function App() {
       }
       return p;
     });
-    setProfiles(updatedProfiles);
-    localStorage.setItem('cinemax_profiles_v1', JSON.stringify(updatedProfiles));
+    saveProfilesState(updatedProfiles);
 
     // If active user is the awarded profile, update user state
     if (user && user.username === username) {
@@ -517,8 +563,7 @@ export default function App() {
       }
       return p;
     });
-    setProfiles(updatedProfiles);
-    localStorage.setItem('cinemax_profiles_v1', JSON.stringify(updatedProfiles));
+    saveProfilesState(updatedProfiles);
 
     // If active user is the toggled profile, update user state
     if (user && user.username === username) {
@@ -549,8 +594,7 @@ export default function App() {
     }
 
     const updatedProfiles = profiles.filter((p) => p.username.toLowerCase() !== username.toLowerCase());
-    setProfiles(updatedProfiles);
-    localStorage.setItem('cinemax_profiles_v1', JSON.stringify(updatedProfiles));
+    saveProfilesState(updatedProfiles);
 
     if (user && user.username.toLowerCase() === username.toLowerCase()) {
       setUser(null);
